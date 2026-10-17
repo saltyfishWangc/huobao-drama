@@ -13,6 +13,9 @@ test('t2i 提交 /prompt 并注入 prompt/width/height', () => {
   assert.equal(req.headers['Content-Type'], 'application/json')
   assert.ok(req.body.client_id)
   assert.ok(req.body.prompt)
+  assert.equal(req.body.prompt['45'].inputs.text, '古装侠客')
+  assert.equal(req.body.prompt['41'].inputs.width, 1920)
+  assert.equal(req.body.prompt['41'].inputs.height, 1080)
 })
 
 test('t2i 拒绝未知模板 id', () => {

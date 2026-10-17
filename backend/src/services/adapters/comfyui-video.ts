@@ -13,11 +13,16 @@ const MODEL_TEMPLATES: Record<string, { template: Record<string, any>; slots: Co
 }
 
 const RESOLUTION_SIZE: Record<string, { width: number; height: number }> = {
-  '480p': { width: 832, height: 480 },
-  '720p': { width: 1280, height: 720 },
-  '1080p': { width: 1920, height: 1080 },
+  '480p': { width: 864, height: 480 },
+  '720p': { width: 1280, height: 736 },
+  '1080p': { width: 1920, height: 1088 },
 }
-const DEFAULT_FPS = 16
+
+// MiniMax H3 encodes duration at 24fps on a 17-frame grid: valid lengths are 5 + 17k.
+function lengthFromDuration(duration: number): number {
+  const raw = Math.max(5, Math.round(duration * 24))
+  return Math.min(3600, raw + ((5 - (raw % 17) + 17) % 17))
+}
 
 function mimeExt(mimeType: string): string {
   const map: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' }
@@ -53,13 +58,13 @@ export class ComfyUIVideoAdapter implements VideoProviderAdapter {
     const { bytes, name } = await firstFrameBytes(firstFrame)
     const uploaded = await uploadImage(config.baseUrl, bytes, name)
     const size = RESOLUTION_SIZE[String(record.resolution || '720p')] ?? RESOLUTION_SIZE['720p']
-    const frames = Math.max(16, Math.round((record.duration ?? 5) * DEFAULT_FPS))
+    const length = lengthFromDuration(record.duration ?? 5)
 
     const workflow = applySlots(entry.template, entry.slots, {
       prompt: record.prompt || '',
       width: size.width,
       height: size.height,
-      frames,
+      length,
       seed: record.seed,
       firstFrame: uploaded.name,
     })

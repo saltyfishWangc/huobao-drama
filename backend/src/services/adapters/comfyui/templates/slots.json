@@ -1,19 +1,18 @@
 {
   "huobao-t2i-v1": {
-    "prompt": { "node": "6", "input": "text" },
-    "width": { "node": "5", "input": "width" },
-    "height": { "node": "5", "input": "height" },
-    "seed": { "node": "3", "input": "seed" },
-    "steps": { "node": "3", "input": "steps" },
-    "cfg": { "node": "3", "input": "cfg" }
+    "prompt": { "node": "45", "input": "text" },
+    "width": { "node": "41", "input": "width" },
+    "height": { "node": "41", "input": "height" },
+    "seed": { "node": "44", "input": "seed" },
+    "steps": { "node": "44", "input": "steps" },
+    "cfg": { "node": "44", "input": "cfg" }
   },
   "huobao-i2v-v1": {
-    "prompt": { "node": "6", "input": "text" },
-    "width": { "node": "10", "input": "width" },
-    "height": { "node": "10", "input": "height" },
-    "seed": { "node": "3", "input": "seed" },
-    "steps": { "node": "3", "input": "steps" },
-    "cfg": { "node": "3", "input": "cfg" },
-    "firstFrame": { "node": "11", "input": "image" }
+    "prompt": { "node": "105:104", "input": "prompt" },
+    "width": { "node": "105:104", "input": "width" },
+    "height": { "node": "105:104", "input": "height" },
+    "length": { "node": "105:104", "input": "length" },
+    "seed": { "node": "105:15", "input": "noise_seed" },
+    "firstFrame": { "node": "114", "input": "image" }
   }
 }

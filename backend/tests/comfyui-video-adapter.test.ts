@@ -30,9 +30,12 @@ test('i2v 上传首帧后提交 /prompt，首帧回填 LoadImage', async () => {
     assert.ok(calls[0].init.body instanceof FormData)
     assert.equal(req.url, 'http://127.0.0.1:6006/prompt')
     const workflow = req.body.prompt
-    assert.equal(workflow['11'].inputs.image, 'frame-1.png')
-    assert.equal(workflow['6'].inputs.text, '镜头推进')
-    assert.equal(workflow['3'].inputs.seed, 42)
+    assert.equal(workflow['114'].inputs.image, 'frame-1.png')
+    assert.equal(workflow['105:104'].inputs.prompt, '镜头推进')
+    assert.equal(workflow['105:15'].inputs.noise_seed, 42)
+    assert.equal(workflow['105:104'].inputs.length, 124)
+    assert.equal(workflow['105:104'].inputs.width, 1280)
+    assert.equal(workflow['105:104'].inputs.height, 736)
   } finally { restore() }
 })
 
