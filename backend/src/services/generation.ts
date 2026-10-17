@@ -226,7 +226,7 @@ async function processTask(id: number, config: AIConfig) {
       const resolvedReferenceVideoUrls = resolvePublicMediaUrls(params.referenceVideoUrls, 'video')
       const resolvedReferenceAudioUrls = resolvePublicMediaUrls(params.referenceAudioUrls, 'audio')
       const resolvedReferenceFileUrl = resolvePublicMediaUrl(params.referenceFileUrl, 'file')
-      ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
+      ;({ url, method, headers, body } = await adapter.buildGenerateRequest(config, {
         id: record.id,
         model: record.model,
         prompt: record.prompt,
@@ -368,13 +368,13 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
       const result = await resp.json() as any
 
       // 图片/视频 PollResponse 结构不同，这里统一按 any 取值后按 type 分支
-      const pollResp: any = adapter.parsePollResponse(result)
+      const pollResp: any = adapter.parsePollResponse(result, config)
 
       if (pollResp.status === 'completed') {
         if (type === 'image') {
           if (pollResp.imageUrl) {
             logTaskSuccess(label, 'poll-complete', { id: record.id, taskId, imageUrl: pollResp.imageUrl })
-            await handleImageComplete(record, pollResp.imageUrl)
+            await handleImageComplete(record, pollResp.imageUrl, pollResp.ext)
             return
           }
           if (adapter.provider === 'gemini') {
@@ -388,7 +388,7 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
           }
         } else if (pollResp.videoUrl) {
           logTaskSuccess(label, 'poll-complete', { id: record.id, taskId, videoUrl: pollResp.videoUrl })
-          await handleVideoComplete(record, pollResp.videoUrl, pollResp.duration)
+          await handleVideoComplete(record, pollResp.videoUrl, pollResp.duration, pollResp.ext)
           return
         }
       }
@@ -410,8 +410,8 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
   await failTask(record.id, 'Timeout: polling attempts exhausted')
 }
 
-async function handleImageComplete(record: SysTaskRecord, imageUrl: string) {
-  const localPath = await downloadFile(imageUrl, 'images')
+async function handleImageComplete(record: SysTaskRecord, imageUrl: string, ext?: string) {
+  const localPath = await downloadFile(imageUrl, 'images', ext)
   // 列表页缩略图（前端按命名约定推导地址，失败不影响主流程）
   await generateImageThumb(localPath)
 
@@ -458,8 +458,8 @@ async function writeBackImageAssets(record: SysTaskRecord, localPath: string) {
   }
 }
 
-async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, duration: number | null | undefined) {
-  const localPath = await downloadFile(videoUrl, 'videos')
+async function handleVideoComplete(record: SysTaskRecord, videoUrl: string, duration: number | null | undefined, ext?: string) {
+  const localPath = await downloadFile(videoUrl, 'videos', ext)
   // 海报帧供列表/封面展示，避免前端为显示首帧缓冲整个视频
   await extractVideoPoster(localPath)
   await db.update(schema.sysTask)

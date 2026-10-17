@@ -27,7 +27,7 @@ export interface ImageProviderAdapter {
   /**
    * 解析轮询响应
    */
-  parsePollResponse(result: any): ImagePollResponse
+  parsePollResponse(result: any, config?: AIConfig): ImagePollResponse
 
   /**
    * 从响应中提取图片 URL（用于直接下载）
@@ -48,13 +48,13 @@ export interface ImageProviderAdapter {
 export interface VideoProviderAdapter {
   provider: string
 
-  buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): ProviderRequest
+  buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): ProviderRequest | Promise<ProviderRequest>
 
   parseGenerateResponse(result: any): VideoGenResponse
 
   buildPollRequest(config: AIConfig, taskId: string): ProviderRequest
 
-  parsePollResponse(result: any): VideoPollResponse
+  parsePollResponse(result: any, config?: AIConfig): VideoPollResponse
 
   extractVideoUrl(result: any): string | null
 }
@@ -124,6 +124,8 @@ export interface ImagePollResponse {
   status: 'pending' | 'processing' | 'completed' | 'failed'
   imageUrl?: string
   error?: string
+  /** 显式文件扩展名（ComfyUI /view 无 pathname 扩展名，需从输出 filename 推导） */
+  ext?: string
 }
 
 export interface VideoGenResponse {
@@ -137,4 +139,6 @@ export interface VideoPollResponse {
   videoUrl?: string
   duration?: number
   error?: string
+  /** 显式文件扩展名（ComfyUI /view 无 pathname 扩展名，需从输出 filename 推导） */
+  ext?: string
 }
