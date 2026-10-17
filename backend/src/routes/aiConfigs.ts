@@ -107,6 +107,15 @@ function buildProbe(serviceType: string, provider: string, baseUrl: string, mode
     }
   }
 
+  if (p === 'comfyui') {
+    return {
+      method: 'GET',
+      url: joinProviderUrl(baseUrl, '', '/system_stats'),
+      headers: {},
+      body: undefined,
+    }
+  }
+
   return {
     method: 'GET',
     url: joinProviderUrl(baseUrl, '', m ? `/${m}` : '/'),

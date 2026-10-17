@@ -57,8 +57,8 @@ test('backend rejects unsupported providers at DB and route boundaries', () => {
 
   assert.match(ai, /officialProviders/)
   assert.match(ai, /text:\s*\[\s*'openai',\s*'gemini',\s*'volcengine'\s*\]/)
-  assert.match(ai, /image:\s*\[\s*'openai',\s*'gemini',\s*'volcengine'\s*\]/)
-  assert.match(ai, /video:\s*\[\s*'volcengine',\s*'minimax',\s*'aliyun'\s*\]/)
+  assert.match(ai, /image:\s*\[\s*'openai',\s*'gemini',\s*'volcengine',\s*'comfyui'\s*\]/)
+  assert.match(ai, /video:\s*\[\s*'volcengine',\s*'minimax',\s*'aliyun',\s*'comfyui'\s*\]/)
   assert.doesNotMatch(ai, /'deepseek'/)
   assert.doesNotMatch(ai, /'ali'/)
   assert.doesNotMatch(ai, /'vidu'/)
@@ -119,6 +119,8 @@ test('AI config probe uses provider-specific auth schemes', () => {
   assert.match(route, /p === 'volcengine'/)
   assert.match(route, /p === 'minimax'/)
   assert.match(route, /p === 'aliyun'/)
+  assert.match(route, /p === 'comfyui'/)
+  assert.match(route, /\/system_stats/)
   assert.match(route, /X-DashScope-Async': 'enable'/)
   assert.match(route, /\/services\/aigc\/video-generation\/video-synthesis/)
   assert.match(route, /'\/chat\/completions'/)
@@ -145,6 +147,12 @@ test('adapter registry fails closed for unsupported providers', () => {
   assert.doesNotMatch(registry, /\|\|\s*imageAdapters\['minimax'\]/)
   assert.doesNotMatch(registry, /\|\|\s*videoAdapters\['minimax'\]/)
   assert.doesNotMatch(registry, /ttsAdapters/)
+})
+
+test('comfyui is registered as an official image and video provider', () => {
+  const registry = read('src/services/adapters/registry.ts')
+  assert.match(registry, /comfyui:\s*new ComfyUIImageAdapter\(\)/)
+  assert.match(registry, /comfyui:\s*new ComfyUIVideoAdapter\(\)/)
 })
 
 test('OpenAI image adapter defaults to GPT Image instead of legacy DALL-E', () => {
