@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { test } from 'node:test'
 import { ComfyUIVideoAdapter } from '../src/services/adapters/comfyui-video'
 
@@ -55,6 +58,56 @@ test('i2v 每次上传使用唯一文件名（并发不覆盖）', async () => {
       adapter.buildGenerateRequest(config, { id: 3, model: 'huobao-i2v-v1', firstFrameUrl: 'data:image/png;base64,BBBB' }),
     ])
     assert.notEqual(names[0], names[1])
+  } finally { restore() }
+})
+
+test('i2v 首帧支持本地绝对路径', async () => {
+  const tmp = path.join(os.tmpdir(), `huobao-first-${process.pid}-${Date.now()}.png`)
+  const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4])
+  fs.writeFileSync(tmp, bytes)
+  let uploaded: Uint8Array | null = null
+  const { restore } = stubFetch(async (url, init) => {
+    if (url.endsWith('/upload/image')) {
+      const blob = (init.body as FormData).get('image') as Blob
+      uploaded = new Uint8Array(await blob.arrayBuffer())
+      return new Response(JSON.stringify({ name: 'frame-abs.png', subfolder: '', type: 'input' }), { status: 200 })
+    }
+    return new Response(JSON.stringify({ prompt_id: 'p-v' }), { status: 200 })
+  })
+  try {
+    const req = await adapter.buildGenerateRequest(config, {
+      id: 9, model: 'huobao-i2v-v1', firstFrameUrl: tmp, prompt: '镜头推进', duration: 5, resolution: '720p', seed: 1,
+    })
+    assert.deepEqual([...uploaded!], [...bytes])
+    assert.equal(req.body.prompt['114'].inputs.image, 'frame-abs.png')
+  } finally {
+    restore()
+    fs.rmSync(tmp, { force: true })
+  }
+})
+
+test('i2v 仅传 referenceImageUrls 时回退首帧为第一张参考图', async () => {
+  const uploadedNames: string[] = []
+  const { calls, restore } = stubFetch((url, init) => {
+    if (url.endsWith('/upload/image')) {
+      const name = [...(init.body as FormData).entries()][0][1] as any
+      uploadedNames.push(name.name)
+      return new Response(JSON.stringify({ name: name.name, subfolder: '', type: 'input' }), { status: 200 })
+    }
+    return new Response(JSON.stringify({ prompt_id: 'p-v' }), { status: 200 })
+  })
+  try {
+    const req = await adapter.buildGenerateRequest(config, {
+      id: 10,
+      model: 'huobao-i2v-v1',
+      prompt: '镜头推进',
+      duration: 5,
+      resolution: '720p',
+      referenceImageUrls: JSON.stringify(['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB']),
+    })
+    assert.equal(calls[0].url, 'http://127.0.0.1:6006/upload/image')
+    assert.equal(uploadedNames.length, 1)
+    assert.equal(req.body.prompt['114'].inputs.image, uploadedNames[0])
   } finally { restore() }
 })
 

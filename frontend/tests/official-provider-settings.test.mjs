@@ -28,12 +28,12 @@ test('settings page exposes official provider templates only', () => {
   assert.doesNotMatch(useApi, /huobaoPreset/i)
   assert.doesNotMatch(useApi, /\/huobao-preset/)
 
-  assert.match(settingsPage, /const providers = \['gemini', 'openai', 'volcengine', 'minimax', 'aliyun', 'comfyui'\]/)
+  assert.match(settingsPage, /const providers = \['gemini', 'openai', 'deepseek', 'volcengine', 'minimax', 'aliyun', 'comfyui'\]/)
   assert.match(settingsPage, /https:\/\/generativelanguage\.googleapis\.com/)
   assert.match(settingsPage, /https:\/\/api\.openai\.com/)
   assert.match(settingsPage, /https:\/\/ark\.cn-beijing\.volces\.com/)
   assert.match(settingsPage, /https:\/\/\{WorkspaceId\}\.cn-beijing\.maas\.aliyuncs\.com/)
-  assert.doesNotMatch(settingsPage, /https:\/\/api\.deepseek\.com/)
+  assert.match(settingsPage, /https:\/\/api\.deepseek\.com/)
   assert.doesNotMatch(settingsPage, /https:\/\/dashscope\.aliyuncs\.com/)
   assert.doesNotMatch(settingsPage, /https:\/\/api\.vidu\.com/)
   assert.doesNotMatch(settingsPage, /\['ali'|'ali',|, 'ali'\]/)
@@ -48,6 +48,7 @@ test('settings page offers official default model IDs', () => {
   assert.match(settingsPage, /gemini-3\.8-flash/)
   assert.match(settingsPage, /gemini-3-flash-preview/)
   assert.match(settingsPage, /gpt-5\.6-terra/)
+  assert.match(settingsPage, /deepseek-chat/)
   assert.match(settingsPage, /deepseek-v4-flash/)
   assert.match(settingsPage, /gemini-3-pro-image/)
   assert.match(settingsPage, /gemini-3\.1-flash-image/)
@@ -79,6 +80,8 @@ test('only text service configs expose the connection test button', () => {
 
 test('settings page offers the supported official provider presets', () => {
   assert.match(providerPresetBlock('text'), /deepseek-v4-pro/)
+  assert.match(providerPresetBlock('text'), /deepseek-chat/)
+  assert.match(providerPresetBlock('text'), /api\.deepseek\.com/)
   assert.doesNotMatch(providerPresetBlock('text'), /minimax/i)
   assert.doesNotMatch(providerPresetBlock('image'), /'ali'|minimax/i)
   assert.match(providerPresetBlock('image'), /comfyui/)

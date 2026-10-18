@@ -29,7 +29,7 @@ export function parseConfigTemperature(settingsRaw: string | null | undefined): 
 }
 
 export const officialProviders: Record<ServiceType, readonly string[]> = {
-  text: ['openai', 'gemini', 'volcengine'],
+  text: ['openai', 'gemini', 'volcengine', 'deepseek'],
   image: ['openai', 'gemini', 'volcengine', 'comfyui'],
   video: ['volcengine', 'minimax', 'aliyun', 'comfyui'],
 }
@@ -43,6 +43,10 @@ export function getTextProviderBaseUrl(config: AIConfig) {
   const provider = config.provider.toLowerCase()
 
   if (provider === 'openai') {
+    return joinProviderUrl(config.baseUrl, '/v1', '')
+  }
+
+  if (provider === 'deepseek') {
     return joinProviderUrl(config.baseUrl, '/v1', '')
   }
 

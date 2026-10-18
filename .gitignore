@@ -43,6 +43,7 @@ configs/config.yaml
 # Misc
 tmp/
 temp/
+.codex-tmp/
 .superpowers/
 /CLAUDE.md
 /AGENTS.md

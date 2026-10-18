@@ -29,6 +29,22 @@ function mimeExt(mimeType: string): string {
   return map[mimeType] || '.png'
 }
 
+function firstReferenceImage(raw: string | null | undefined): string {
+  if (!raw) return ''
+  try {
+    const arr = JSON.parse(raw)
+    if (Array.isArray(arr)) {
+      for (const item of arr) {
+        if (typeof item === 'string' && item.trim()) return item.trim()
+      }
+      return ''
+    }
+  } catch {
+    // 非 JSON 数组时按单个 URL 字面处理（后端通常传 JSON 数组字符串）
+  }
+  return raw.trim()
+}
+
 async function firstFrameBytes(value: string): Promise<{ bytes: Uint8Array; name: string }> {
   if (value.startsWith('data:')) {
     const parsed = parseDataUrl(value)
@@ -42,7 +58,8 @@ async function firstFrameBytes(value: string): Promise<{ bytes: Uint8Array; name
     return { bytes: new Uint8Array(await resp.arrayBuffer()), name: `huobao-first-${randomUUID()}${ext}` }
   }
   const ext = path.extname(value) || '.png'
-  return { bytes: new Uint8Array(fs.readFileSync(getAbsolutePath(value))), name: `huobao-first-${randomUUID()}${ext}` }
+  const filePath = path.isAbsolute(value) ? value : getAbsolutePath(value)
+  return { bytes: new Uint8Array(fs.readFileSync(filePath)), name: `huobao-first-${randomUUID()}${ext}` }
 }
 
 export class ComfyUIVideoAdapter implements VideoProviderAdapter {
@@ -52,8 +69,14 @@ export class ComfyUIVideoAdapter implements VideoProviderAdapter {
     const model = record.model || config.model
     const entry = MODEL_TEMPLATES[model || '']
     if (!entry) throw new Error(`ComfyUI 视频模板未知：${model}（支持 huobao-i2v-v1）`)
-    const firstFrame = (record.firstFrameUrl || record.imageUrl || '').trim()
-    if (!firstFrame) throw new Error('ComfyUI 图生视频需要首帧图（first_frame_url / image_url）')
+    // 前端镜头生成只提交 reference_image_urls（场景图在前），ComfyUI i2v 需要首帧：回退取第一张参考图
+    const firstFrame = (
+      record.firstFrameUrl ||
+      record.imageUrl ||
+      firstReferenceImage(record.referenceImageUrls) ||
+      ''
+    ).trim()
+    if (!firstFrame) throw new Error('ComfyUI 图生视频需要首帧图（first_frame_url / image_url / reference_image_urls）')
 
     const { bytes, name } = await firstFrameBytes(firstFrame)
     const uploaded = await uploadImage(config.baseUrl, bytes, name)
