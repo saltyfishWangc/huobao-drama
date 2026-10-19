@@ -130,3 +130,31 @@ test('video parsePollResponse 错误状态为终态失败', () => {
   const poll = adapter.parsePollResponse({ 'p-v': { status: { status_str: 'error', completed: true }, messages: [[null, { errors: [{ message: 'cuda oom' }] }]] } }, config)
   assert.deepEqual(poll, { status: 'failed', error: 'cuda oom' })
 })
+
+test('video parsePollResponse 空 history 返回 processing（排队/执行由 /queue 区分）', () => {
+  assert.equal(adapter.parsePollResponse({}, config).status, 'processing')
+})
+
+test('getQueueStatus 区分排队中与执行中', async () => {
+  const { restore } = stubFetch((url) => {
+    if (url.endsWith('/queue')) {
+      return new Response(JSON.stringify({
+        queue_running: [[1, 'running-id', {}, {}, ['9']]],
+        queue_pending: [[2, 'queued-id', {}, {}, ['9']]],
+      }), { status: 200 })
+    }
+    return new Response('{}', { status: 404 })
+  })
+  try {
+    assert.equal(await adapter.getQueueStatus(config, 'queued-id'), 'queued')
+    assert.equal(await adapter.getQueueStatus(config, 'running-id'), 'processing')
+    assert.equal(await adapter.getQueueStatus(config, 'unknown-id'), 'missing')
+  } finally { restore() }
+})
+
+test('getQueueStatus 请求失败时抛错', async () => {
+  const { restore } = stubFetch(() => new Response('down', { status: 502 }))
+  try {
+    await assert.rejects(adapter.getQueueStatus(config, 'x'), /queue 失败/)
+  } finally { restore() }
+})
