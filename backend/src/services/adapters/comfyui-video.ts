@@ -3,8 +3,8 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { joinProviderUrl } from './url'
 import { getAbsolutePath, parseDataUrl } from '../../utils/storage.js'
-import type { AIConfig, ProviderRequest, VideoGenerationRecord, VideoGenResponse, VideoPollResponse, VideoProviderAdapter } from './types'
-import { applySlots, buildViewUrl, extFromFilename, extractVideoOutput, firstHistoryEntry, historyErrorMessage, uploadImage, type ComfySlots } from './comfyui-client'
+import type { AIConfig, ProviderRequest, QueueStatus, VideoGenerationRecord, VideoGenResponse, VideoPollResponse, VideoProviderAdapter } from './types'
+import { applySlots, buildViewUrl, extFromFilename, extractVideoOutput, firstHistoryEntry, getQueueState, historyErrorMessage, uploadImage, type ComfySlots } from './comfyui-client'
 import i2v from './comfyui/templates/i2v.json' with { type: 'json' }
 import slotsFile from './comfyui/templates/slots.json' with { type: 'json' }
 
@@ -119,6 +119,10 @@ export class ComfyUIVideoAdapter implements VideoProviderAdapter {
     }
     if (entry.status?.completed) return { status: 'failed', error: 'ComfyUI 任务完成但未产出视频' }
     return { status: 'processing' }
+  }
+
+  async getQueueStatus(config: AIConfig, taskId: string): Promise<QueueStatus> {
+    return getQueueState(config.baseUrl, taskId)
   }
 
   extractVideoUrl(result: any): string | null { return null }

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { joinProviderUrl } from './url'
+import type { QueueStatus } from './types'
 
 export interface ComfyImageOutput { filename: string; subfolder?: string; type?: string }
 export interface ComfyUploadResult { name: string; subfolder: string; type: string }
@@ -22,6 +23,21 @@ export async function getHistory(baseUrl: string, promptId: string): Promise<any
   const resp = await fetch(joinProviderUrl(baseUrl, '', `/history/${encodeURIComponent(promptId)}`), { method: 'GET' })
   if (!resp.ok) throw new Error(`ComfyUI /history 失败: HTTP ${resp.status}`)
   return resp.json()
+}
+
+/**
+ * 查询任务在 ComfyUI 队列中的位置。
+ * /history/{prompt_id} 在排队与执行期间都返回空对象，无法区分二者；
+ * /queue 的 queue_pending / queue_running 才能区分「排队中」与「执行中」。
+ */
+export async function getQueueState(baseUrl: string, taskId: string): Promise<QueueStatus> {
+  const resp = await fetch(joinProviderUrl(baseUrl, '', '/queue'), { method: 'GET' })
+  if (!resp.ok) throw new Error(`ComfyUI /queue 失败: HTTP ${resp.status}`)
+  const data: any = await resp.json()
+  const contains = (rows: any[] | undefined) => Array.isArray(rows) && rows.some((row) => row?.[1] === taskId)
+  if (contains(data?.queue_pending)) return 'queued'
+  if (contains(data?.queue_running)) return 'processing'
+  return 'missing'
 }
 
 export function buildViewUrl(baseUrl: string, output: ComfyImageOutput): string {

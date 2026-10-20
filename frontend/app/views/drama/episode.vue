@@ -2331,11 +2331,11 @@ function genTaskDuration(row) {
   return ms >= 60000 ? `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s` : `${Math.round(ms / 1000)}s`
 }
 
-// 抽屉打开且有进行中任务时,4s 轮询;关闭或全部结束时停止
-watch([taskDrawer, genTaskActiveCount], ([open, active]) => {
+// 存在进行中任务时 4s 轮询刷新页面状态(不依赖抽屉是否打开);全部结束时停止
+watch(genTaskActiveCount, (active) => {
   stopGenTasksPolling()
-  if (open && active > 0) {
-    genTasksTimer = setInterval(loadGenTasks, 4000)
+  if (active > 0) {
+    genTasksTimer = setInterval(refreshGenerationStatus, 4000)
   }
 })
 
@@ -2638,6 +2638,18 @@ async function refresh() {
   }
   try { mergeData.value = await mergeAPI.status(epId.value) } catch {}
   await Promise.all([loadGenTasks(), loadExportMerges()])
+}
+
+// 生成任务轮询：只刷新分镜结果与任务状态，不触发脚本步骤/面板重置
+async function refreshGenerationStatus() {
+  if (!epId.value) return
+  try {
+    sbs.value = await episodeAPI.storyboards(epId.value)
+    selectedVideoSbIds.value = selectedVideoSbIds.value.filter(id => sbs.value.some(sb => sb.id === id))
+    const currentSelectedId = selectedSb.value?.id
+    selectedSb.value = sbs.value.find(sb => sb.id === currentSelectedId) || sbs.value[0] || null
+  } catch { /* 静默，下个周期重试 */ }
+  await loadGenTasks()
 }
 
 function saveRaw() { episodeAPI.update(epId.value, { content: localRaw.value }); episode.value.content = localRaw.value }
@@ -3297,35 +3309,40 @@ async function pollVideoGeneration(generationId, storyboardId) {
     }, 60, 4000)
     return
   }
-  for (let i = 0; i < 120; i++) {
+  // 跟随后端 sys_task 的权威状态，前端不再自行判定超时；
+  // 仅保留一个防御性上限，防止后端异常时无限轮询（排队 24h + 执行 50min 之外留余量）。
+  const safetyDeadline = Date.now() + 26 * 60 * 60 * 1000
+  while (Date.now() < safetyDeadline) {
     await sleep(4000)
+    let res
     try {
-      const res = await taskAPI.get(generationId)
-      await refresh()
-      if (res?.status === 'completed') {
-        pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
-        delete failedVideoMessages.value[storyboardId]
-        toast.success(t('episode.vid.genDone'))
-        return
+      res = await taskAPI.get(generationId)
+    } catch (e) {
+      // 接口不可达（后端重启/网络中断）：停止本地轮询，状态交由全局对账恢复
+      pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+      toastError(e, { fallback: 'episode.vid.genFailed' })
+      return
+    }
+    await refresh()
+    if (res?.status === 'completed') {
+      pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+      delete failedVideoMessages.value[storyboardId]
+      toast.success(t('episode.vid.genDone'))
+      return
+    }
+    if (res?.status === 'failed') {
+      pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
+      const errMsg = res?.error_msg || res?.errorMsg || t('episode.vid.genFailed')
+      failedVideoMessages.value = {
+        ...failedVideoMessages.value,
+        [storyboardId]: errMsg,
       }
-      if (res?.status === 'failed') {
-        pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
-        const errMsg = res?.error_msg || res?.errorMsg || t('episode.vid.genFailed')
-        failedVideoMessages.value = {
-          ...failedVideoMessages.value,
-          [storyboardId]: errMsg,
-        }
-        toastError(errMsg, { fallback: 'episode.vid.genFailed' })
-        return
-      }
-    } catch {}
+      toastError(errMsg, { fallback: 'episode.vid.genFailed' })
+      return
+    }
   }
+  // 防御性上限（正常流程不会到达）：停止本地轮询，避免无限等待
   pendingVideoIds.value = pendingVideoIds.value.filter(item => item !== storyboardId)
-  failedVideoMessages.value = {
-    ...failedVideoMessages.value,
-    [storyboardId]: t('episode.vid.genTimeout'),
-  }
-  toast.error(t('episode.vid.genTimeout'))
 }
 async function doMerge(ids) {
   const storyboardIds = Array.isArray(ids) ? ids : undefined

@@ -30,6 +30,12 @@ export interface ImageProviderAdapter {
   parsePollResponse(result: any, config?: AIConfig): ImagePollResponse
 
   /**
+   * 可选：厂商有显式队列（如 ComfyUI）时，返回任务当前在队列中的位置。
+   * 未实现的厂商视为「提交即执行」，轮询阶段直接从执行预算开始计时。
+   */
+  getQueueStatus?(config: AIConfig, taskId: string): Promise<QueueStatus>
+
+  /**
    * 从响应中提取图片 URL（用于直接下载）
    * 返回 null 表示图片数据是 base64 格式，需要用 extractImageBase64 处理
    */
@@ -56,10 +62,19 @@ export interface VideoProviderAdapter {
 
   parsePollResponse(result: any, config?: AIConfig): VideoPollResponse
 
+  /**
+   * 可选：厂商有显式队列（如 ComfyUI）时，返回任务当前在队列中的位置。
+   * 未实现的厂商视为「提交即执行」，轮询阶段直接从执行预算开始计时。
+   */
+  getQueueStatus?(config: AIConfig, taskId: string): Promise<QueueStatus>
+
   extractVideoUrl(result: any): string | null
 }
 
 // ============ 通用类型 ============
+
+/** 队列感知厂商（ComfyUI）的任务队列状态 */
+export type QueueStatus = 'queued' | 'processing' | 'missing'
 
 export interface ProviderRequest {
   url: string

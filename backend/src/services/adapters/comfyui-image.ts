@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { joinProviderUrl } from './url'
-import type { AIConfig, ImageGenerationRecord, ImageGenResponse, ImagePollResponse, ImageProviderAdapter, ProviderRequest } from './types'
-import { applySlots, buildViewUrl, extractImageOutput, extFromFilename, firstHistoryEntry, historyErrorMessage, type ComfySlots } from './comfyui-client'
+import type { AIConfig, ImageGenerationRecord, ImageGenResponse, ImagePollResponse, ImageProviderAdapter, ProviderRequest, QueueStatus } from './types'
+import { applySlots, buildViewUrl, extractImageOutput, extFromFilename, firstHistoryEntry, getQueueState, historyErrorMessage, type ComfySlots } from './comfyui-client'
 import t2i from './comfyui/templates/t2i.json' with { type: 'json' }
 import slotsFile from './comfyui/templates/slots.json' with { type: 'json' }
 
@@ -55,6 +55,10 @@ export class ComfyUIImageAdapter implements ImageProviderAdapter {
     }
     if (entry.status?.completed) return { status: 'failed', error: 'ComfyUI 任务完成但未产出图片' }
     return { status: 'processing' }
+  }
+
+  async getQueueStatus(config: AIConfig, taskId: string): Promise<QueueStatus> {
+    return getQueueState(config.baseUrl, taskId)
   }
 
   extractImageUrl(result: any): string | null { return null }

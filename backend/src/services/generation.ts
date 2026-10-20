@@ -16,10 +16,20 @@ type TaskType = 'image' | 'video'
 
 const taskLabel = (type: TaskType) => (type === 'image' ? 'ImageTask' : 'VideoTask')
 
-// 轮询节奏：图片 5s×120（上限 10 分钟）；视频 10s×300
-const POLL_PROFILES: Record<TaskType, { attempts: number; intervalMs: number; maxDurationMs: number | null }> = {
-  image: { attempts: 120, intervalMs: 5000, maxDurationMs: 600_000 },
-  video: { attempts: 300, intervalMs: 10_000, maxDurationMs: null },
+// 轮询节奏：执行预算只计算真正开始生成的时长，排队时间单独计。
+// - maxDurationMs：执行预算（图片 10 分钟、视频 50 分钟），排队不占用
+// - queueMaxDurationMs：排队等待上限（24 小时，覆盖夜间批量生成）
+// - queueIntervalMs：排队时放宽轮询间隔，避免整夜空转
+const POLL_PROFILES: Record<TaskType, PollProfile> = {
+  image: { intervalMs: 5000, queueIntervalMs: 15_000, maxDurationMs: 600_000, queueMaxDurationMs: 86_400_000 },
+  video: { intervalMs: 10_000, queueIntervalMs: 30_000, maxDurationMs: 3_000_000, queueMaxDurationMs: 86_400_000 },
+}
+
+interface PollProfile {
+  intervalMs: number
+  queueIntervalMs: number
+  maxDurationMs: number
+  queueMaxDurationMs: number
 }
 
 interface GenerateImageParams {
@@ -338,14 +348,29 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
   const label = taskLabel(type)
   const profile = POLL_PROFILES[type]
   const adapter = type === 'image' ? getImageAdapter(config.provider) : getVideoAdapter(config.provider)
-  const startedAt = Date.now()
+  const queueAware = typeof adapter.getQueueStatus === 'function'
+  const taskKind = type === 'image' ? '图片生成' : '视频生成'
+  const queuedFrom = Date.now()
+  // 非队列感知厂商「提交即执行」，执行预算从轮询开始就计时，与旧逻辑一致
+  let executionStartedAt: number | null = queueAware ? null : Date.now()
+  let attempt = 0
 
-  for (let i = 0; i < profile.attempts; i++) {
-    if (profile.maxDurationMs && Date.now() - startedAt >= profile.maxDurationMs) {
-      await failTask(record.id, 'Timeout: Polling exceeded 10 minutes')
+  for (;;) {
+    attempt++
+    const nowMs = Date.now()
+
+    if (executionStartedAt !== null && nowMs - executionStartedAt >= profile.maxDurationMs) {
+      await failTask(record.id, `${taskKind}执行超时（超过 ${Math.round(profile.maxDurationMs / 60_000)} 分钟）`)
       return
     }
-    await new Promise(r => setTimeout(r, profile.intervalMs))
+    if (executionStartedAt === null && nowMs - queuedFrom >= profile.queueMaxDurationMs) {
+      await failTask(record.id, `${taskKind}排队等待超时（超过 ${Math.round(profile.queueMaxDurationMs / 3_600_000)} 小时）`)
+      return
+    }
+
+    const intervalMs = executionStartedAt === null && queueAware ? profile.queueIntervalMs : profile.intervalMs
+    await new Promise(r => setTimeout(r, intervalMs))
+
     try {
       const { url, method, headers } = adapter.buildPollRequest(config, taskId)
       logTaskProgress(label, 'poll-request', {
@@ -354,17 +379,21 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
         provider: config.provider,
         method,
         url: redactUrl(url),
-        attempt: i + 1,
+        attempt,
       })
-      const remainingMs = profile.maxDurationMs
-        ? Math.max(1_000, profile.maxDurationMs - (Date.now() - startedAt))
-        : 600_000
+
+      const remainingBudgetMs = executionStartedAt !== null
+        ? Math.max(1_000, profile.maxDurationMs - (Date.now() - executionStartedAt))
+        : Math.max(1_000, profile.queueMaxDurationMs - (Date.now() - queuedFrom))
       const resp = await fetch(url, {
         method,
         headers,
-        signal: AbortSignal.timeout(remainingMs),
+        signal: AbortSignal.timeout(Math.min(120_000, remainingBudgetMs)),
       })
-      if (!resp.ok) continue
+      if (!resp.ok) {
+        logTaskWarn(label, 'poll-http', { id: record.id, taskId, attempt, status: resp.status })
+        continue
+      }
       const result = await resp.json() as any
 
       // 图片/视频 PollResponse 结构不同，这里统一按 any 取值后按 type 分支
@@ -397,17 +426,26 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
         await failTask(record.id, pollResp.error || 'Generation failed')
         return
       }
-    } catch (err: any) {
-      const exhausted = i === profile.attempts - 1
-        || (profile.maxDurationMs != null && Date.now() - startedAt >= profile.maxDurationMs)
-      if (exhausted) {
-        await failTask(record.id, `Timeout: ${err.message}`)
-        return
+
+      // 非终态：区分排队与执行，只有真正开始执行才消耗执行预算
+      if (queueAware) {
+        let queueStatus: 'queued' | 'processing' | 'missing'
+        try {
+          queueStatus = await adapter.getQueueStatus!(config, taskId)
+        } catch (err: any) {
+          // /queue 暂时不可用（隧道断/服务重启）：保守按排队等待，不启动执行计时
+          logTaskWarn(label, 'queue-check-failed', { id: record.id, taskId, attempt, error: err.message })
+          continue
+        }
+        if (queueStatus === 'processing' && executionStartedAt === null) {
+          executionStartedAt = Date.now()
+          logTaskProgress(label, 'execution-start', { id: record.id, taskId, attempt })
+        }
       }
-      logTaskWarn(label, 'poll-retry', { id: record.id, taskId, attempt: i + 1, error: err.message })
+    } catch (err: any) {
+      logTaskWarn(label, 'poll-retry', { id: record.id, taskId, attempt, error: err.message })
     }
   }
-  await failTask(record.id, 'Timeout: polling attempts exhausted')
 }
 
 async function handleImageComplete(record: SysTaskRecord, imageUrl: string, ext?: string) {
